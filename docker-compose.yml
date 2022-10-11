@@ -1,0 +1,118 @@
+version: '3.7'
+
+services:
+  postgres:
+    container_name: postgres
+    image: postgres:14.5
+    restart: always
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      PG_DATA: /var/lib/postgresql/data/pgdata
+    networks:
+        zabbix:
+            ipv4_address: 10.5.0.10
+
+  zabbix-server:
+    container_name: zabbix-server
+    image: zabbix/zabbix-server-pgsql:ubuntu-6.2-latest
+    restart: always
+    ports:
+      - "10051:10051"
+    volumes:
+      - ./config:/etc/zabbix
+      # - /etc/localtime:/etc/localtime/:ro
+      # - /etc/timezone:/etc/timezone/:ro 
+      - ./zabbix-server/alertscripts:/usr/lib/zabbix/alertscripts:ro
+      - ./zabbix-server/externalscripts:/usr/lib/zabbix/externalscripts:ro
+      - ./zabbix-server/dbscripts:/var/lib/zabbix/dbscripts:ro
+      - ./zabbix-server/export:/var/lib/zabbix/export:rw
+      - ./zabbix-server/modules:/var/lib/zabbix/modules:ro
+      - ./zabbix-server/enc:/var/lib/zabbix/enc:ro
+      - ./zabbix-server/ssh_keys:/var/lib/zabbix/ssh_keys:ro
+      - ./zabbix-server/mibs:/var/lib/zabbix/mibs:ro
+      - ./zabbix-server/snmptraps:/var/lib/zabbix/snmptraps:ro
+      #  - ./env_vars/.ZBX_DB_CA_FILE:/run/secrets/root-ca.pem:ro
+      #  - ./env_vars/.ZBX_DB_CERT_FILE:/run/secrets/client-cert.pem:ro
+      #  - ./env_vars/.ZBX_DB_KEY_FILE:/run/secrets/client-key.pem:ro
+    environment:
+      DB_SERVER_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    depends_on:
+      - postgres
+    networks:
+        zabbix:
+            ipv4_address: 10.5.0.20
+
+  zabbix-frontend:
+    container_name: zabbix-frontend
+    image: zabbix/zabbix-web-nginx-pgsql:6.2-ubuntu-latest
+    restart: always
+    ports:
+      - "8080:8080"
+      - "4443:8443"
+    environment:
+      DB_SERVER_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      PHP_TZ: ${TZ}
+      ZBX_SERVER_HOST: 10.5.0.20
+    depends_on:
+      - zabbix-server
+    networks:
+        zabbix:
+            ipv4_address: 10.5.0.30
+
+  zabbix-agent:
+    container_name: zabbix-agent
+    image: zabbix/zabbix-agent:6.2-ubuntu-latest
+    user: root
+    restart: always
+    privileged: true
+    volumes:
+      - ./zabbix-agent/var/run:/var/run
+    ports:
+      - "10050:10050"
+    environment:
+      - ZBX_HOSTNAME=10.5.0.20
+      - ZBX_SERVER_HOST=10.5.0.20
+    depends_on:
+      - zabbix-server
+    networks:
+        zabbix:
+            ipv4_address: 10.5.0.40
+
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:9.1.4-ubuntu
+    user: "472"
+    volumes:
+      - ./grafana:/var/lib/grafana
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_DATABASE_MAX_OPEN_CONN=300
+      - GF_ENABLE_GZIP=true
+      - GF_INSTALL_PLUGINS=alexanderzobnin-zabbix-app
+    depends_on:
+      - zabbix-server
+    networks:
+        zabbix:
+            ipv4_address: 10.5.0.50
+
+networks:
+  zabbix:
+    ipam:
+     config:
+       - subnet: 10.5.0.0/24
+         gateway: 10.5.0.1
