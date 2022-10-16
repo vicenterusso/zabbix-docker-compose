@@ -8,7 +8,7 @@
 - Zabbix Agent 6.2
 - Grafana 9.1.4
 
-### Instalaçãp
+### Instalação
 
 1) Clone:
 ```
